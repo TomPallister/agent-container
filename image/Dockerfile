@@ -78,6 +78,7 @@ RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca
 WORKDIR /opt/agent-container-node-tools
 COPY node-tools/package.json node-tools/package-lock.json ./
 RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem NODE_EXTRA_CA_CERTS=/tmp/build-ca.pem; fi; \
+    chmod 0644 package.json package-lock.json; \
     npm ci --omit=dev --ignore-scripts --no-audit --no-fund; \
     ln -s /opt/agent-container-node-tools/node_modules/.bin/pi /usr/local/bin/pi; \
     rm -f /tmp/build-ca.pem
@@ -218,7 +219,7 @@ RUN set -eux; \
     chown -R dev:dev /home/dev
 
 # Neovim (your $EDITOR) — pinned official tarball installed to /opt/nvim to
-# match the .zshenv PATH ($HOME/.local/nvim/bin). Checksum-verified, arch-aware.
+# match the image PATH (/opt/nvim/bin). Checksum-verified, arch-aware.
 RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem NODE_EXTRA_CA_CERTS=/tmp/build-ca.pem; fi; \
     set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -241,7 +242,9 @@ COPY runtime/nested-podman-wrapper.sh /usr/local/bin/podman
 COPY runtime/git-credential-proxy.py /usr/local/bin/git-credential-proxy
 COPY runtime/setup-home.py /usr/local/bin/setup-home
 COPY home /opt/agent-container-home
-RUN chmod 0755 /usr/local/bin/*.sh /usr/local/bin/podman /usr/local/bin/git-credential-proxy /usr/local/bin/setup-home \
+# Host checkout umask must not make root-owned defaults unreadable to dev.
+RUN chmod -R a+rX,go-w /opt/agent-container-home \
+    && chmod 0755 /usr/local/bin/*.sh /usr/local/bin/podman /usr/local/bin/git-credential-proxy /usr/local/bin/setup-home \
     && ln -s /usr/local/bin/podman /usr/local/bin/docker
 ENV PATH="/opt/nvim/bin:${PATH}" PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1
 USER dev

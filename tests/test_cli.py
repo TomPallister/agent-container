@@ -153,6 +153,21 @@ class RuntimeTests(unittest.TestCase):
     def runtime(self):
         return c.Runtime(config(),sys.executable)
 
+    def test_source_hash_uses_git_executable_bit_not_checkout_umask(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); image=root/'image'; image.mkdir(); file=image/'example'
+            file.write_text('public code'); file.chmod(0o644)
+            with patch.object(c,'ROOT',root):
+                original=c.source_hash(); file.chmod(0o600)
+                self.assertEqual(c.source_hash(),original)
+                file.chmod(0o700)
+                self.assertNotEqual(c.source_hash(),original)
+
+    def test_public_defaults_are_readable_independent_of_host_umask(self):
+        dockerfile=(c.ROOT/'image/Dockerfile').read_text()
+        self.assertIn('chmod -R a+rX,go-w /opt/agent-container-home',dockerfile)
+        self.assertIn('chmod 0644 package.json package-lock.json',dockerfile)
+
     def test_creation_contract(self):
         runtime=self.runtime(); args=runtime.create_command()
         self.assertEqual(args[args.index('--network')+1],runtime.network)

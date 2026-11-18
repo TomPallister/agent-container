@@ -439,7 +439,7 @@ def source_hash():
         if path.is_file() and '__pycache__' not in path.parts and 'node_modules' not in path.parts:
             require(not path.is_symlink(), 'Image inputs must not be symlinks')
             data = path.read_bytes()
-            header = json.dumps([str(path.relative_to(ROOT)), stat.S_IMODE(path.stat().st_mode), len(data)]).encode()
+            header = json.dumps([str(path.relative_to(ROOT)), bool(path.stat().st_mode & stat.S_IXUSR), len(data)]).encode()
             digest.update(len(header).to_bytes(8, 'big') + header + data)
     return digest.hexdigest()
 
