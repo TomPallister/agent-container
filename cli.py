@@ -67,7 +67,20 @@ def save_new(path, data):
 
 def validate_config(value):
     keys = {'version', 'name', 'machine', 'proxyConfig', 'git', 'shell', 'image', 'unlock', 'buildCA', 'githubSecret'}
-    require(isinstance(value, dict) and set(value) == keys and value['version'] == 1, 'Invalid settings schema')
+    optional = {'environment', 'githubOwners', 'githubCopilotSecret'}
+    require(isinstance(value, dict) and keys <= set(value) and set(value) <= keys | optional and value['version'] == 1, 'Invalid settings schema')
+    environment = value.get('environment', {})
+    require(isinstance(environment, dict) and len(environment) <= 128, 'Invalid client environment')
+    for key, setting in environment.items():
+        require(isinstance(key, str) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,127}', key), 'Invalid environment key')
+        text(setting, 'environment value', 8192)
+    owners = value.get('githubOwners', {})
+    require(isinstance(owners, dict) and len(owners) <= 64, 'Invalid GitHub owner routing')
+    for owner, canonical in owners.items():
+        require(isinstance(owner, str) and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,38}', owner), 'Invalid GitHub owner')
+        require(isinstance(canonical, str) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,127}', canonical), 'Invalid GitHub reference name')
+    copilot = value.get('githubCopilotSecret', '')
+    require(isinstance(copilot, str) and (not copilot or re.fullmatch(r'[A-Z][A-Z0-9_]{0,127}', copilot)), 'Invalid Copilot reference name')
     name(value['name']); name(value['machine'])
     require(value['shell'] in ('zsh', 'bash'), 'Choose zsh or bash')
     text(value['proxyConfig'], 'proxyConfig')
@@ -156,15 +169,24 @@ except Exception: sys.exit(2)
 
 def container_environment(config, proxy, module):
     env = dict(proxy.get('environment', {}))  # explicitly configured references/settings only
+    env.update(config.get('environment', {}))
+    env.pop('ALL_PROXY', None)
+    env.pop('all_proxy', None)
     # Never inherit ambient host environment. Protect trust, identity and loader settings.
-    denied = {'HOME', 'PATH', 'ENV', 'BASH_ENV', 'ZDOTDIR', 'NODE_OPTIONS', 'PYTHONPATH', 'PYTHONHOME', 'SSLKEYLOGFILE'}
+    denied = {'HOME', 'PATH', 'ENV', 'BASH_ENV', 'ZDOTDIR', 'NODE_OPTIONS', 'PYTHONPATH', 'PYTHONHOME', 'SSLKEYLOGFILE',
+              'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE',
+              'NODE_EXTRA_CA_CERTS', 'NODE_USE_ENV_PROXY', 'GIT_SSL_CAINFO', 'AWS_CA_BUNDLE'}
+    for key in config.get('environment', {}):
+        require(key not in denied, 'Unsafe client environment setting: ' + key)
+    transport = {'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE',
+                 'NODE_EXTRA_CA_CERTS', 'NODE_USE_ENV_PROXY', 'GIT_SSL_CAINFO', 'AWS_CA_BUNDLE'}
     for key, value in env.items():
-        require(key not in denied and not key.startswith(('LD_', 'DYLD_', 'OP_', 'PI_', 'GIT_CONFIG', 'AGENT_CONTAINER_')),
+        require(key not in denied - transport and not key.startswith(('LD_', 'DYLD_', 'OP_', 'PI_', 'GIT_CONFIG', 'AGENT_CONTAINER_')),
                 'Unsafe proxy client environment setting: ' + key)
         require('\n' not in value and '\r' not in value, 'Multiline client environment value')
         # Credential-shaped names must use references or explicit AWS dummy selectors.
-        if re.search(r'(TOKEN|SECRET|PASSWORD|API_KEY|ACCESS_KEY)', key):
-            require(REF in value or (key == 'AWS_SESSION_TOKEN' and re.fullmatch(r'secretrole:[0-9]{12}/[\w+=,.@-]+', value))
+        if re.search(r'(TOKEN|SECRET|PASSWORD|API_?KEY|ACCESS_KEY)', key):
+            require(re.fullmatch(re.escape(REF) + r'[A-Z][A-Z0-9_]{0,127}', value) or (key == 'AWS_SESSION_TOKEN' and re.fullmatch(r'secretrole:[0-9]{12}/[\w+=,.@-]+', value))
                     or (key in {'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'} and 'dummy' in value.lower()),
                     'Raw credential configuration is not accepted: ' + key)
     capability = module.private_read(Path(proxy['sharedDir']) / 'proxy-token', 49).decode().strip()
@@ -181,9 +203,14 @@ def container_environment(config, proxy, module):
                PI_TELEMETRY='0', PI_SKIP_VERSION_CHECK='1',
                GIT_TERMINAL_PROMPT='0', GIT_ASKPASS='/bin/true')
     settings = [('core.hooksPath', '/dev/null')]
-    if config['githubSecret']:
+    if config['githubSecret'] or config.get('githubOwners') or config.get('githubCopilotSecret'):
         env['AGENT_CONTAINER_GITHUB_SECRET'] = config['githubSecret']
-        env['GH_TOKEN'] = REF + config['githubSecret']
+        if config.get('githubOwners') or config.get('githubCopilotSecret'):
+            env.pop('GH_TOKEN', None)
+            env['AGENT_CONTAINER_GITHUB_OWNERS'] = json.dumps(config.get('githubOwners', {}))
+            env['AGENT_CONTAINER_GITHUB_COPILOT'] = config.get('githubCopilotSecret', '')
+        else:
+            env['GH_TOKEN'] = REF + config['githubSecret']
         env.pop('GITHUB_TOKEN', None)
         settings.extend([('credential.https://github.com.helper', ''),
                          ('credential.https://github.com.helper', 'proxy'),
@@ -209,8 +236,9 @@ def env_file(env):
 
 
 class Runtime:
-    def __init__(self, config, executable=None):
+    def __init__(self, config, executable=None, config_path=None):
         self.config = validate_config(config)
+        self.config_path = Path(config_path or DEFAULT_CONFIG)
         self.engine = executable or shutil.which('podman') or '/opt/podman/bin/podman'
         require(Path(self.engine).is_absolute() and os.access(self.engine, os.X_OK), 'Install Podman with libkrun/krunkit first')
         self.container = 'ac-' + config['name']
@@ -311,6 +339,8 @@ class Runtime:
             self.call('volume', 'create', '--label', self.label, self.volume)
         else:
             self.owned(volume)
+            from volume_import import check_import
+            check_import(self, volume, self.config_path)
         info = self.inspect('container', self.container)
         if info is None:
             self.call(*self.create_command())
@@ -501,7 +531,7 @@ def setup(path):
         save_new(path, (json.dumps(cfg, indent=2)+'\n').encode())
     print('Saved ' + str(path))
     print('Building the first image; this can take several minutes. No host files are shared.')
-    runtime = Runtime(cfg)
+    runtime = Runtime(cfg, config_path=path)
     runtime.build()
     with proxy_snapshot(cfg['proxyConfig']) as (module, proxy, client):
         runtime.prepare(proxy, module, initialise=True)
@@ -552,14 +582,14 @@ def operation_lock(config_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument('action', nargs='?', default='shell', choices=['setup', 'build', 'init', 'shell', 'exec', 'status', 'stop', 'recreate', 'login', 'ports'])
+    parser.add_argument('action', nargs='?', default='shell', choices=['setup', 'build', 'init', 'shell', 'exec', 'status', 'stop', 'recreate', 'login', 'ports', 'import-volume'])
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     os.umask(0o077)
     if args.action == 'setup':
         setup(args.config); return 0
     cfg = validate_config(json.loads(private_read(args.config)))
-    runtime = Runtime(cfg)
+    runtime = Runtime(cfg, config_path=args.config)
     if args.action == 'status':
         info = runtime.inspect('container', runtime.container)
         print('Not created' if not info else ('Running' if info['State']['Running'] else 'Stopped'))
@@ -571,6 +601,12 @@ def main(argv=None):
         if args.action == 'ports':
             print(runtime.reconcile_ports(status=True).stdout.decode()); return 0
         runtime.ensure_machine()
+        if args.action == 'import-volume':
+            from volume_import import import_volume
+            source = args.command[1:] if args.command[:1] == ['--'] else args.command
+            require(len(source) == 1, 'import-volume needs one offline encrypted source volume name')
+            import_volume(runtime, source[0], args.config)
+            return 0
         with proxy_snapshot(cfg['proxyConfig']) as (module, proxy, client):
             env = runtime.prepare(proxy, module, initialise=args.action == 'init')
             if args.action == 'init': print('Workspace ready.'); return 0

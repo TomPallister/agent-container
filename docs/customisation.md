@@ -80,3 +80,26 @@ as a shortcut into the encrypted mount: engine-side copying may bypass FUSE.
 VS Code can attach to the running container through the named Podman connection.
 Use agent-container shells for authenticated commands: bare attached terminals
 do not automatically receive per-exec proxy capabilities.
+
+## Private service configuration
+
+Optional `environment` settings in the private host config supplement the
+proxy client metadata. Credential-shaped values must be canonical references;
+loader/trust/proxy overrides are refused. No host environment is inherited.
+Use `githubOwners` (lowercase owner to canonical secret name) and optional
+`githubCopilotSecret` for owner/API-specific routing. The existing
+`githubSecret` remains the default. Account names never belong in public source.
+
+The `gh`/Git helpers select references, not tokens. `GH_SECRET_NAME` selects an
+explicit canonical name. `gog` uses a Google access-token reference, refuses
+local auth/token options and never performs OAuth. `cx` requires explicit
+`CX_BASE_URI` (or `CX_BASE_AUTH_URI`), `CX_TENANT` and a Checkmarx key
+reference; both returned tokens must be sealed. These adapters require matching
+secret-proxy providers/policies, which the launcher never adds or widens.
+
+`awsrole ACCOUNT ROLE` sets the dummy role selector in Zsh/Bash; the proxy
+still enforces authorization. `zshenv.local` is sourced from the encrypted
+customisation directory for noninteractive Zsh too. `~/.pi/state` now lives at
+`~/dev/.agent-container/pi-state`, alongside encrypted agent and session data.
+
+See [encrypted-volume migration](migration.md) before moving an existing store.

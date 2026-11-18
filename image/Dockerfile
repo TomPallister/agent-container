@@ -11,6 +11,8 @@ ENV AWSCLI_VERSION=2.36.19
 ENV NVIM_VERSION=0.12.4
 ENV UV_VERSION=0.12.3
 ENV GH_VERSION=2.97.0
+ENV TERRAFORM_VERSION=1.15.8 PYTHON_VERSION=3.14.7 GOGCLI_VERSION=0.48.1 CHECKMARX_VERSION=2.3.65
+ENV AUTH0_CLI_VERSION=1.37.0 STRIPE_CLI_VERSION=1.53.1 RESEND_CLI_VERSION=2.28.0
 
 # Base packages from the current Ubuntu 26.04 repositories (not snapshot-pinned).
 RUN apt-get update && apt-get install -y \
@@ -236,6 +238,134 @@ RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca
     /opt/nvim/bin/nvim --version | head -1; \
     rm -f /tmp/build-ca.pem
 
+
+# Additional developer CLIs. Account configuration is supplied privately at exec time.
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) tfarch='arm64'; sha='8891e9dcedc9e3b8950bc6af9d4d8af1f4cfade3062f53b9dc403a89f6ce8c9c' ;; \
+      amd64) tfarch='amd64'; sha='d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/terraform.zip "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${tfarch}.zip"; \
+    echo "${sha}  /tmp/terraform.zip" | sha256sum -c -; \
+    unzip -q /tmp/terraform.zip -d /usr/local/bin; \
+    chmod +x /usr/local/bin/terraform; \
+    rm -f /tmp/terraform.zip; \
+    terraform version; \
+    rm -f /tmp/build-ca.pem
+
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    UV_SYSTEM_CERTS=1 \
+    UV_PYTHON_INSTALL_DIR=/opt/agent-container-python \
+    UV_PYTHON_BIN_DIR=/usr/local/bin \
+    uv python install --default --no-cache "$PYTHON_VERSION"; \
+    test "$(python3 -c 'import platform; print(platform.python_version())')" = "$PYTHON_VERSION"; \
+    python --version; python3 --version; python3.14 --version; \
+    rm -f /tmp/build-ca.pem
+
+ARG AZCOPY_VERSION=10.32.4
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) azarch='arm64'; sha='c614777841277ab2c53eecc9ecca5704fd697375c2ffaf4a407058891f00f673' ;; \
+      amd64) azarch='amd64'; sha='8f859a0dbbc117660c249fb3569694fc8a0f33b68701f5b2b92ccc001ee50784' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/azcopy.tgz "https://github.com/Azure/azure-storage-azcopy/releases/download/v${AZCOPY_VERSION}/azcopy_linux_${azarch}_${AZCOPY_VERSION}.tar.gz"; \
+    echo "${sha}  /tmp/azcopy.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/azcopy.tgz -C /tmp; \
+    install -m 0755 /tmp/azcopy_linux_${azarch}_${AZCOPY_VERSION}/azcopy /usr/local/bin/azcopy; \
+    rm -rf /tmp/azcopy.tgz /tmp/azcopy_linux_*; \
+    azcopy --version; \
+    rm -f /tmp/build-ca.pem
+
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) cxarch='arm64'; sha='456fec50d0627eef730af4d13731785a8d7e242875bab8d09a717d8efd821180' ;; \
+      amd64) cxarch='x64';   sha='311f67b21cd0f7c65f10439cc3a3517e8f8457f2fcac3340dd92f9cf07a73789' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    archive="ast-cli_${CHECKMARX_VERSION}_linux_${cxarch}.tar.gz"; \
+    curl -fsSLo "/tmp/${archive}" "https://github.com/Checkmarx/ast-cli/releases/download/${CHECKMARX_VERSION}/${archive}"; \
+    echo "${sha}  /tmp/${archive}" | sha256sum -c -; \
+    tar -xzf "/tmp/${archive}" -C /tmp cx; \
+    install -m 0755 /tmp/cx /usr/local/bin/cx-real; \
+    rm -f "/tmp/${archive}" /tmp/cx; \
+    cx-real version; \
+    rm -f /tmp/build-ca.pem
+
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends jq; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) gogarch='arm64'; sha='c091fa2014dc3d5608acef4d09fb3bb4a3eb71e4cff898b5eaddd9703599e45c' ;; \
+      amd64) gogarch='amd64'; sha='dcd956e09d1222a07c1304d836f8acd55266b2fa241ef466580ced6a02453d72' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/gogcli.tar.gz "https://github.com/openclaw/gogcli/releases/download/v${GOGCLI_VERSION}/gogcli_${GOGCLI_VERSION}_linux_${gogarch}.tar.gz"; \
+    echo "${sha}  /tmp/gogcli.tar.gz" | sha256sum -c -; \
+    mkdir /tmp/gogcli; \
+    tar -xzf /tmp/gogcli.tar.gz -C /tmp/gogcli; \
+    install -m 0755 /tmp/gogcli/gog /usr/local/bin/gog-real; \
+    rm -rf /tmp/gogcli /tmp/gogcli.tar.gz /var/lib/apt/lists/*; \
+    gog-real --version | head -1; \
+    rm -f /tmp/build-ca.pem
+
+ENV AUTH0_CLI_ANALYTICS=false
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) a0arch='arm64';  sha='e8ebb31520921b84ce462641094f92559dfe9f5edaaa78a58109aac7599478b7' ;; \
+      amd64) a0arch='x86_64'; sha='277e8fa32b9e4f4feb8e30717892139251821c0c66cd3ad5f326ba759ec6ac4f' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/auth0.tar.gz "https://github.com/auth0/auth0-cli/releases/download/v${AUTH0_CLI_VERSION}/auth0-cli_${AUTH0_CLI_VERSION}_Linux_${a0arch}.tar.gz"; \
+    echo "${sha}  /tmp/auth0.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/auth0.tar.gz -C /usr/local/bin auth0; \
+    rm -f /tmp/auth0.tar.gz; \
+    auth0 --version; \
+    rm -f /tmp/build-ca.pem
+
+ENV STRIPE_CLI_TELEMETRY_OPTOUT=1 STRIPE_NO_AUTO_UPDATE=1
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) starch='arm64';  sha='b6e83f779e7df52b46397c7d39f71b1de6d8920239861a6eaa0da14c24e0a3c6' ;; \
+      amd64) starch='x86_64'; sha='032fe0b849a9d6a222488bc846445bafeae993af1026b78a8121d02321ca1fd1' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/stripe.tar.gz "https://github.com/stripe/stripe-cli/releases/download/v${STRIPE_CLI_VERSION}/stripe_${STRIPE_CLI_VERSION}_linux_${starch}.tar.gz"; \
+    echo "${sha}  /tmp/stripe.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/stripe.tar.gz -C /usr/local/bin stripe; \
+    rm -f /tmp/stripe.tar.gz; \
+    stripe version; \
+    rm -f /tmp/build-ca.pem
+
+ENV RESEND_TELEMETRY_DISABLED=1 RESEND_NO_UPDATE_NOTIFIER=1
+RUN --mount=type=secret,id=upstream_ca set -eu; if [ -f /run/secrets/upstream_ca ]; then cat /etc/ssl/certs/ca-certificates.crt /run/secrets/upstream_ca > /tmp/build-ca.pem; export CURL_CA_BUNDLE=/tmp/build-ca.pem SSL_CERT_FILE=/tmp/build-ca.pem; fi; set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      arm64) rsarch='arm64'; sha='a03fa3daada607e39625bc926a72bdfe1302003dbba6f72afe33040e0b5d440c' ;; \
+      amd64) rsarch='x64';   sha='bf98fbf20c9beec0beca2a05dfa3eccd2591471a702014caf8f7aacf60e5e523' ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSLo /tmp/resend.tar.gz "https://github.com/resend/resend-cli/releases/download/v${RESEND_CLI_VERSION}/resend-linux-${rsarch}.tar.gz"; \
+    echo "${sha}  /tmp/resend.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/resend.tar.gz -C /usr/local/bin resend; \
+    rm -f /tmp/resend.tar.gz; \
+    resend --version; \
+    rm -f /tmp/build-ca.pem
+
+COPY runtime/cipher-copy.py /usr/local/bin/cipher-copy
+RUN chmod 0755 /usr/local/bin/cipher-copy
+COPY runtime/github_auth.py runtime/client_shims.py /usr/local/bin/
+COPY runtime/gh-proxy.py /usr/local/bin/gh
+COPY runtime/gog-proxy.py /usr/local/bin/gog
+COPY runtime/cx-proxy.py /usr/local/bin/cx
+RUN chmod 0644 /usr/local/bin/github_auth.py /usr/local/bin/client_shims.py \
+    && chmod 0755 /usr/local/bin/gh /usr/local/bin/gog /usr/local/bin/cx
 
 COPY runtime/mount-devcrypt.sh runtime/devcrypt-watchdog.sh runtime/nested-podman-keeper.sh runtime/nested-podman-setup.sh runtime/nested-podman-shutdown.sh runtime/nested-proxy-bridge.sh runtime/git-ssh-sign-proxy.sh /usr/local/bin/
 COPY runtime/nested-podman-wrapper.sh /usr/local/bin/podman

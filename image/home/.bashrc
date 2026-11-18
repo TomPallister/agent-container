@@ -5,6 +5,7 @@ export HISTCONTROL=ignorespace
 export XDG_RUNTIME_DIR=/tmp/agent-container-podman
 export PI_CODING_AGENT_DIR="$HOME/dev/.agent-container/pi"
 export PI_CODING_AGENT_SESSION_DIR="$PI_CODING_AGENT_DIR/sessions"
+source /opt/agent-container-home/workflow.sh
 PROMPT_COMMAND='date +%s > /tmp/agent-container/unlock-ts'
 PS1='[agent-container] \w \$ '
 [[ ! -f "$HOME/dev/.agent-container/bashrc.local" ]] || source "$HOME/dev/.agent-container/bashrc.local"

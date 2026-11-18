@@ -16,7 +16,7 @@ def findings(path,raw):
     key_text=text.replace("'-----BEGIN PRIVATE KEY-----'",'')  # marker-only rejection fixture
     if re.search(r'-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----',key_text): bad.append('private key material')
     for email in re.findall(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}',text):
-        if not email.endswith(('@example.com','@example.invalid')) and not (path.name=='.p10k.zsh' and email=='x@y.com'):
+        if email != 'git@github.com' and not email.endswith(('@example.com','@example.invalid')) and not (path.name=='.p10k.zsh' and email=='x@y.com'):
             bad.append('non-fixture email')
     for account in re.findall(r'(?<![A-Za-z0-9])[0-9]{12}(?![A-Za-z0-9])',text):
         if account not in {'000000000000','111111111111','123456789012'}:

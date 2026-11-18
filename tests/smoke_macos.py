@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import socket
 import sys
+import tempfile
 import time
 import uuid
 from unittest.mock import patch
@@ -45,6 +46,8 @@ def main():
         return original_call(*command, **kwargs)
     runtime.call=diagnostic_call
     ready=[]
+    extra_runtimes=[]
+    import_directory=tempfile.TemporaryDirectory(prefix='encrypted-import-smoke-')
     def passed(message):
         ready.append(message); print('PASS '+message,flush=True)
     def exec_with(env,*command,timeout=60,check=True,data=None):
@@ -119,6 +122,30 @@ def main():
             assert exec_with(env,'cat','persistence.txt').stdout==b'persistent'
             assert exec_with(env,'cat','.agent-container/zshrc.local').stdout==b'# user override\n'
             passed('recreation preserves encrypted files and customisation')
+            # Offline ciphertext import into another owned volume, never adoption.
+            from volume_import import import_volume
+            copied=c.Runtime(dict(cfg,name=cfg['name']+'-copy'),config_path=Path(import_directory.name)/'config.json')
+            extra_runtimes.append(copied)
+            try:
+                import_volume(copied,runtime.volume,copied.config_path)
+            except c.Error:
+                assert copied.inspect('volume',copied.volume) is None
+            else:
+                raise AssertionError('Running source was accepted for import')
+            runtime.stop()
+            receipt=import_volume(copied,runtime.volume,copied.config_path)
+            with patch('cli.read_passphrase',return_value=b'disposable-smoke-passphrase\n'):
+                copied_env=copied.prepare(proxy,module)
+            with c.env_file(copied_env) as env_path:
+                result=copied.call('exec','--env-file',env_path,copied.container,'sh','-c',
+                    'test "$(cat /home/dev/dev/persistence.txt)" = persistent && printf changed > /home/dev/dev/persistence.txt')
+                assert result.returncode==0
+            copied.stop()
+            with patch('cli.read_passphrase',return_value=b'disposable-smoke-passphrase\n'):
+                env=runtime.prepare(proxy,module)
+            assert exec_with(env,'cat','persistence.txt').stdout==b'persistent'
+            assert receipt['verification']['entries']>2
+            passed('verified offline ciphertext import, unlock and independent original rollback data')
             # Shut off only this transport: no direct fallback must emerge.
             runtime.owned(runtime.inspect('container',runtime.relay)); runtime.call('stop',runtime.relay)
             assert exec_with(env,'curl','-fsS','--max-time','4','https://example.com',check=False).returncode != 0
@@ -127,12 +154,14 @@ def main():
         # All resources are unique to this test; never remove a mismatched owner.
         try: runtime.reconcile_ports(start=False)
         except Exception: pass
-        for kind,target in [('container',runtime.container),('container',runtime.relay),
-                            ('volume',runtime.volume),('network',runtime.network),('network',runtime.egress)]:
-            info=runtime.inspect(kind,target)
-            if info:
-                runtime.owned(info)
-                runtime.call(kind,'rm',*(['-f'] if kind=='container' else []),target)
+        for owned in [runtime,*extra_runtimes]:
+            for kind,target in [('container',owned.container),('container',owned.relay),
+                                ('volume',owned.volume),('network',owned.network),('network',owned.egress)]:
+                info=owned.inspect(kind,target)
+                if info:
+                    owned.owned(info)
+                    owned.call(kind,'rm',*(['-f'] if kind=='container' else []),target)
+        import_directory.cleanup()
     print(json.dumps({'passed':ready,'scope':'disposable resources; no proxy lifecycle or existing workspace changes'}))
 
 

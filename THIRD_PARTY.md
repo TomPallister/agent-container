@@ -5,7 +5,8 @@ documentation. It does not relicense downloaded tools or their dependencies.
 
 The image builds from Ubuntu and installs distribution packages (including
 gocryptfs, FUSE, Podman, Git and shell utilities), plus checksum-verified Node.js,
-uv, AWS CLI, GitHub CLI and Neovim releases. Pi and its npm dependencies are
+uv, CPython, AWS CLI, GitHub CLI, Neovim, Terraform, AzCopy, gogcli,
+Checkmarx CLI, Auth0 CLI, Stripe CLI and Resend CLI releases. Pi and its npm dependencies are
 lockfile-pinned. Oh My Zsh, Powerlevel10k and zsh-autosuggestions are downloaded
 from pinned revisions with their upstream licence files retained.
 
