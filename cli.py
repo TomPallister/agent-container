@@ -515,7 +515,9 @@ def setup(path):
         print('Connected to installed secret-proxy. No vault API credentials will enter the container.')
         username = ask('Git author name')
         email = ask('Git author email')
-        ref = ask('GitHub secret name configured in your proxy (blank to skip)', infer_github(proxy))
+        ref = ask('GitHub secret name for HTTPS Git helper (Enter accepts suggestion; - skips helper)', infer_github(proxy))
+        if ref == '-':
+            ref = ''
         signing = ask('Git signing PUBLIC key file (blank to skip)')
         key = Path(signing).expanduser().read_text().strip() if signing else ''
         print('Workspace unlock: Enter for a typed passphrase, or provide an existing 1Password op://vault/item/field reference.')

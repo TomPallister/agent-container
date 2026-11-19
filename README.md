@@ -24,11 +24,13 @@ You need:
 git clone https://github.com/TomPallister/agent-container.git
 cd agent-container
 ./install.sh
+export PATH="$HOME/.local/bin:$PATH"
 agent-container setup
 agent-container
 ```
 
-Add `~/.local/bin` to PATH if needed. Keep the checkout: the installed command
+The PATH change above applies to this terminal; include `~/.local/bin` in your
+shell's PATH for future terminals too. Keep the checkout: the installed command
 links to it. Setup discovers your proxy, asks for Git identity and workspace
 unlock preferences, creates a dedicated **no-host-shares** development VM,
 builds the image and initialises an encrypted volume. First build takes several
@@ -37,7 +39,9 @@ minutes. **No prebuilt images are published yet.**
 The workspace passphrase is separate from API credentials. Type one, or select
 an existing 1Password item in an explicitly selected account. Keep a recoverable
 copy in your password manager: losing it means losing the encrypted data.
-Setup never creates vault items or asks for an API token.
+Setup never creates vault items or asks for an API token. At the GitHub helper
+prompt, Enter accepts the suggested secret name (if any); `-` skips that helper.
+Skipping the helper does not revoke access granted by your proxy configuration.
 
 If setup stops after saving settings, correct the prerequisite, then run
 `agent-container build` and `agent-container init`. It will not overwrite

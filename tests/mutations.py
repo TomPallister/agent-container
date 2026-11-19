@@ -30,6 +30,13 @@ changes += [
  ('image/runtime/client_shims.py','accept unsealed Checkmarx reply', 'if raw!=REF+expected:', 'if False:'),
  ('image/runtime/github_auth.py','route to the wrong GitHub identity', 'routes.get(selected_owner.lower())', "'WRONG_TOKEN'"),
 ]
+changes += [
+ ('cli.py','cannot skip suggested GitHub helper', "if ref == '-':", 'if False:'),
+ ('cli.py','save untrusted setup environment', '        container_environment(cfg, proxy, module)', '        pass'),
+ ('cli.py','setup without terminal', "require(sys.stdin.isatty(), 'Setup needs an interactive terminal')", "require(True, 'Setup needs an interactive terminal')"),
+ ('cli.py','public setup settings', 'os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600', 'os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644'),
+ ('cli.py','repeated setup contacts proxy', "require(not path.exists() and not path.is_symlink(), 'Already configured; edit your private config instead of rerunning setup')", "require(True, 'Already configured; edit your private config instead of rerunning setup')"),
+]
 for filename,description,old,new in [('cli.py', 'baseline', None, None)] + changes:
  source=(root/filename).read_text()
  if old is not None:
