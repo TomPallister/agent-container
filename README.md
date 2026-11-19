@@ -63,8 +63,13 @@ agent-container                   # unlock if needed, enter Zsh
 agent-container exec -- git status # execute in ~/dev
 agent-container status
 agent-container ports
+agent-container copy ./project dev:project # new destination, verified stream
 agent-container stop              # stop this container; keep encrypted data
 ```
+
+For bidirectional copies and verified host-directory moves, see
+[explicit file transfers](docs/transfers.md). Transfers refuse overwrites and
+require an already unlocked workspace; exports are plaintext on the host.
 
 Inside:
 

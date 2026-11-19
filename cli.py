@@ -19,6 +19,10 @@ import sys
 import tempfile
 import time
 
+# Helpers import cli for the shared Error type even when this file is the entrypoint.
+if __name__ == '__main__':
+    sys.modules['cli'] = sys.modules[__name__]
+
 ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = Path.home() / '.config/agent-container/config.json'
 LABEL = 'io.github.agent-container'
@@ -582,7 +586,7 @@ def operation_lock(config_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument('action', nargs='?', default='shell', choices=['setup', 'build', 'init', 'shell', 'exec', 'status', 'stop', 'recreate', 'login', 'ports', 'import-volume'])
+    parser.add_argument('action', nargs='?', default='shell', choices=['setup', 'build', 'init', 'shell', 'exec', 'status', 'stop', 'recreate', 'login', 'ports', 'import-volume', 'copy', 'move'])
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     os.umask(0o077)
@@ -595,6 +599,10 @@ def main(argv=None):
         print('Not created' if not info else ('Running' if info['State']['Running'] else 'Stopped'))
         return 0
     with operation_lock(args.config):
+        if args.action in ('copy', 'move'):
+            from transfer import perform
+            perform(runtime, args.action, args.command[1:] if args.command[:1] == ['--'] else args.command)
+            return 0
         if args.action == 'build': runtime.build(); return 0
         if args.action == 'stop': runtime.stop(); return 0
         if args.action == 'recreate': runtime.recreate(); return 0

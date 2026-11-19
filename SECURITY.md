@@ -60,6 +60,16 @@ proof of vulnerability freedom. Ubuntu packages use mutable repositories.
 The preview has functional isolation tests, not an independent penetration test
 or a complete vulnerability clearance. Do not present it as such.
 
+## Explicit file transfers
+
+`copy`/`move` intentionally cross the host/workspace data boundary at caller-chosen
+paths. They do not mount host directories or vend credentials. Receivers validate
+a bounded typed stream and use no-follow descriptors and atomic no-replace
+publication, not general archive extraction. Exports are plaintext on the host;
+content can still be malicious. Moves require quiescent source writers and trust
+the selected engine/image; they do not prove durable storage against a compromised
+destination. See [transfer limits and recovery](docs/transfers.md).
+
 ## Reporting
 
 Use GitHub private vulnerability reporting for this repository. Do not post
