@@ -55,7 +55,9 @@ existing configuration or automatically initialise an existing unknown store.
 - Encrypted `~/dev`, including Pi configuration/sessions and user shell overrides.
 - Rootless nested Podman/Compose, with encrypted storage.
 - Automatic forwarding of explicitly published nested TCP ports to host loopback.
-- Reference-based GitHub authentication and optional proxy-backed Git signing.
+- Reference-based GitHub authentication, optional owner-based routing and proxy-backed Git signing.
+- Reference-only Google and sealed Checkmarx adapters when explicitly configured
+  in the proxy; see [integration boundaries](docs/integrations.md).
 
 Nothing is copied from your host Pi installation: no private settings, skills,
 memory, bots or stored API keys.
@@ -88,11 +90,14 @@ podman compose up -d
 not private Git clone/push or signing. See [Git and agent integration](docs/integrations.md)
 before using those features.
 
-For ChatGPT/Codex, run `secret-proxy login` on the host, then
+For ChatGPT/Codex, run `secret-proxy login chatgpt` on the host, then
 `agent-container login`. Only the validated **sealed** Codex record is imported.
 Select your model with Pi's `/model`. Do not run ordinary OAuth/token login flows
 inside the container. Other providers use reference variables from your proxy's
-client configuration.
+client configuration. With an opt-in proxy login vault, saved logins can restore
+after proxy restart; no real refresh token is imported into this workspace.
+See [proxy login and policy compatibility](docs/integrations.md#proxy-login-and-policy-compatibility)
+for GitHub CLI/Copilot, named-client and CA limitations.
 
 The workspace idle watchdog waits while terminals are open. After the idle
 timeout it stops nested workloads and attempts to unmount. A busy workspace
